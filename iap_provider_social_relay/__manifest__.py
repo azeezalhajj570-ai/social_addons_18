@@ -12,8 +12,10 @@
         'base_setup',
     ],
     'data': [
+        'data/ir_config_parameter_data.xml',
         'views/res_config_settings_views.xml',
     ],
     'installable': True,
     'application': False,
 }
+
