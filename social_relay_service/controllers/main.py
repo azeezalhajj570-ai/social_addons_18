@@ -47,7 +47,8 @@ class SocialRelayServiceController(http.Controller):
             return _MEDIA_ERROR_TOKEN[media]
 
         try:
-            return template.format(returning_url=returning_url, db_uuid=db_uuid)
+            base_url = request.httprequest.url_root.rstrip('/')
+            return template.format(returning_url=returning_url, db_uuid=db_uuid, base_url=base_url)
         except Exception:
             _logger.exception('Invalid URL template for media %s', media)
             return _MEDIA_ERROR_TOKEN[media]
@@ -178,3 +179,4 @@ class SocialRelayServiceController(http.Controller):
         # Replace this with your provider call if you need to really dispatch notifications.
         _logger.info('social_relay_service received push batch: %s token(s)', len(tokens))
         return self._jsonrpc_response(rpc_id, result={'accepted': len(tokens)})
+
