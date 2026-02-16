@@ -13,7 +13,10 @@ _logger = logging.getLogger(__name__)
 class IapAccount(models.Model):
     _inherit = 'iap.account'
 
-    provider = fields.Selection(selection_add=[('social_relay', 'Social Relay')])
+    provider = fields.Selection(
+        selection_add=[('social_relay', 'Social Relay')],
+        ondelete={'social_relay': 'set default'},
+    )
 
     def _get_social_relay_endpoint(self):
         return self.env['ir.config_parameter'].sudo().get_param('iap_provider_social_relay.endpoint', '')
@@ -112,3 +115,4 @@ class IapAccount(models.Model):
         except (requests.RequestException, ValueError, TypeError) as err:
             _logger.warning('Social relay credit fetch failed: %s', err)
             return -1
+
