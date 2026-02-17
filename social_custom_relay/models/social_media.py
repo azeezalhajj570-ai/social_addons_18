@@ -15,6 +15,8 @@ _logger = logging.getLogger(__name__)
 class SocialMediaCustomRelay(models.Model):
     _inherit = 'social.media'
 
+    _DEFAULT_SOCIAL_IAP_ENDPOINT = 'http://localhost:8069'
+
     @staticmethod
     def _sanitize_endpoint(endpoint):
         endpoint = (endpoint or '').strip()
