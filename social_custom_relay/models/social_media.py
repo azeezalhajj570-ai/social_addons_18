@@ -15,17 +15,33 @@ _logger = logging.getLogger(__name__)
 class SocialMediaCustomRelay(models.Model):
     _inherit = 'social.media'
 
+    @staticmethod
+    def _sanitize_endpoint(endpoint):
+        endpoint = (endpoint or '').strip()
+        if endpoint.startswith('http://') or endpoint.startswith('https://'):
+            return endpoint
+        return ''
+
     def _get_custom_relay_endpoint(self):
         icp = self.env['ir.config_parameter'].sudo()
-        return (
+        endpoint = (
             icp.get_param('social.custom_relay_endpoint')
             or icp.get_param('social.social_iap_endpoint')
             or self.env['social.media']._DEFAULT_SOCIAL_IAP_ENDPOINT
         )
+        return self._sanitize_endpoint(endpoint)
 
     def _relay_get(self, route, params=None, timeout=5):
         endpoint = self._get_custom_relay_endpoint()
-        return requests.get(url_join(endpoint, route), params=params or {}, timeout=timeout)
+        if not endpoint:
+            raise UserError(_(
+                "Invalid relay endpoint. Please configure 'social.custom_relay_endpoint' or "
+                "'social.social_iap_endpoint' with a full URL (including http:// or https://)."
+            ))
+        try:
+            return requests.get(url_join(endpoint, route), params=params or {}, timeout=timeout)
+        except requests.RequestException as err:
+            raise UserError(_("Failed to contact relay endpoint: %s", err))
 
     def _relay_add_accounts(self, media, route, callback_path, error_tokens):
         db_uuid = self.env['ir.config_parameter'].sudo().get_param('database.uuid')
