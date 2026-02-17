@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 
+import logging
+
 import requests
 from werkzeug.urls import url_join
 
 from odoo import _, models
 from odoo.addons.iap.tools import iap_tools
 from odoo.exceptions import AccessError, UserError
+
+_logger = logging.getLogger(__name__)
 
 
 class SocialMediaCustomRelay(models.Model):
@@ -23,75 +27,74 @@ class SocialMediaCustomRelay(models.Model):
         endpoint = self._get_custom_relay_endpoint()
         return requests.get(url_join(endpoint, route), params=params or {}, timeout=timeout)
 
-    def _add_facebook_accounts_from_iap(self):
+    def _relay_add_accounts(self, media, route, callback_path, error_tokens):
+        db_uuid = self.env['ir.config_parameter'].sudo().get_param('database.uuid')
+        endpoint = self._get_custom_relay_endpoint()
+        callback_url = url_join(self.get_base_url(), callback_path)
+        _logger.info(
+            'social_custom_relay: add account requested media=%s endpoint=%s db_uuid=%s callback=%s',
+            media,
+            endpoint,
+            db_uuid,
+            callback_url,
+        )
         response = self._relay_get(
-            'api/social/facebook/1/add_accounts',
+            route,
             params={
-                'returning_url': url_join(self.get_base_url(), 'social_facebook/callback'),
-                'db_uuid': self.env['ir.config_parameter'].sudo().get_param('database.uuid'),
+                'returning_url': callback_url,
+                'db_uuid': db_uuid,
             },
         ).text
+        _logger.info(
+            'social_custom_relay: add account response media=%s value=%s',
+            media,
+            response,
+        )
         if response == 'unauthorized':
             raise UserError(_("You don't have an active subscription. Please buy one here: %s", 'https://www.odoo.com/buy'))
-        if response in ('facebook_missing_configuration', 'missing_parameters'):
+        if response in error_tokens:
             raise UserError(_("The url that this service requested returned an error. Please contact the author of the app."))
         return {'type': 'ir.actions.act_url', 'url': response, 'target': 'self'}
+
+    def _add_facebook_accounts_from_iap(self):
+        return self._relay_add_accounts(
+            media='facebook',
+            route='api/social/facebook/1/add_accounts',
+            callback_path='social_facebook/callback',
+            error_tokens=('facebook_missing_configuration', 'missing_parameters'),
+        )
 
     def _add_instagram_accounts_from_iap(self):
-        response = self._relay_get(
-            'api/social/instagram/1/add_accounts',
-            params={
-                'returning_url': url_join(self.get_base_url(), 'social_instagram/callback'),
-                'db_uuid': self.env['ir.config_parameter'].sudo().get_param('database.uuid'),
-            },
-        ).text
-        if response == 'unauthorized':
-            raise UserError(_("You don't have an active subscription. Please buy one here: %s", 'https://www.odoo.com/buy'))
-        if response in ('instagram_missing_configuration', 'missing_parameters'):
-            raise UserError(_("The url that this service requested returned an error. Please contact the author of the app."))
-        return {'type': 'ir.actions.act_url', 'url': response, 'target': 'self'}
+        return self._relay_add_accounts(
+            media='instagram',
+            route='api/social/instagram/1/add_accounts',
+            callback_path='social_instagram/callback',
+            error_tokens=('instagram_missing_configuration', 'missing_parameters'),
+        )
 
     def _add_youtube_accounts_from_iap(self):
-        response = self._relay_get(
-            'api/social/youtube/1/add_accounts',
-            params={
-                'returning_url': url_join(self.get_base_url(), 'social_youtube/callback'),
-                'db_uuid': self.env['ir.config_parameter'].sudo().get_param('database.uuid'),
-            },
-        ).text
-        if response == 'unauthorized':
-            raise UserError(_("You don't have an active subscription. Please buy one here: %s", 'https://www.odoo.com/buy'))
-        if response == 'youtube_missing_configuration':
-            raise UserError(_("The url that this service requested returned an error. Please contact the author of the app."))
-        return {'type': 'ir.actions.act_url', 'url': response, 'target': 'self'}
+        return self._relay_add_accounts(
+            media='youtube',
+            route='api/social/youtube/1/add_accounts',
+            callback_path='social_youtube/callback',
+            error_tokens=('youtube_missing_configuration',),
+        )
 
     def _add_twitter_accounts_from_iap(self):
-        response = self._relay_get(
-            'api/social/twitter/1/add_accounts',
-            params={
-                'returning_url': url_join(self.get_base_url(), 'social_twitter/callback'),
-                'db_uuid': self.env['ir.config_parameter'].sudo().get_param('database.uuid'),
-            },
-        ).text
-        if response == 'unauthorized':
-            raise UserError(_("You don't have an active subscription. Please buy one here: %s", 'https://www.odoo.com/buy'))
-        if response == 'wrong_configuration':
-            raise UserError(_("The url that this service requested returned an error. Please contact the author of the app."))
-        return {'type': 'ir.actions.act_url', 'url': response, 'target': 'self'}
+        return self._relay_add_accounts(
+            media='twitter',
+            route='api/social/twitter/1/add_accounts',
+            callback_path='social_twitter/callback',
+            error_tokens=('wrong_configuration',),
+        )
 
     def _add_linkedin_accounts_from_iap(self):
-        response = self._relay_get(
-            'api/social/linkedin/1/add_accounts',
-            params={
-                'returning_url': url_join(self.get_base_url(), 'social_linkedin/callback'),
-                'db_uuid': self.env['ir.config_parameter'].sudo().get_param('database.uuid'),
-            },
-        ).text
-        if response == 'unauthorized':
-            raise UserError(_("You don't have an active subscription. Please buy one here: %s", 'https://www.odoo.com/buy'))
-        if response in ('linkedin_missing_configuration', 'missing_parameters'):
-            raise UserError(_("The url that this service requested returned an error. Please contact the author of the app."))
-        return {'type': 'ir.actions.act_url', 'url': response, 'target': 'self'}
+        return self._relay_add_accounts(
+            media='linkedin',
+            route='api/social/linkedin/1/add_accounts',
+            callback_path='social_linkedin/callback',
+            error_tokens=('linkedin_missing_configuration', 'missing_parameters'),
+        )
 
     def _get_twitter_oauth_signature_from_iap(self, method, url, params, oauth_token_secret=''):
         params['oauth_nonce'] = str(params['oauth_nonce'])

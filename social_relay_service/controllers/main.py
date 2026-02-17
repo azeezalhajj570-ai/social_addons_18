@@ -40,15 +40,30 @@ class SocialRelayServiceController(http.Controller):
 
     def _render_add_accounts_url(self, media, returning_url, db_uuid):
         if not returning_url or not db_uuid:
+            _logger.warning(
+                'social_relay_service: missing add-account inputs media=%s returning_url=%s db_uuid=%s',
+                media,
+                bool(returning_url),
+                bool(db_uuid),
+            )
             return _MEDIA_ERROR_TOKEN[media]
 
         template = self._icp().get_param(_MEDIA_TEMPLATE_KEY[media])
         if not template:
+            _logger.warning('social_relay_service: empty template media=%s key=%s', media, _MEDIA_TEMPLATE_KEY[media])
             return _MEDIA_ERROR_TOKEN[media]
 
         try:
             base_url = request.httprequest.url_root.rstrip('/')
-            return template.format(returning_url=returning_url, db_uuid=db_uuid, base_url=base_url)
+            result = template.format(returning_url=returning_url, db_uuid=db_uuid, base_url=base_url)
+            _logger.info(
+                'social_relay_service: add-account media=%s db_uuid=%s base_url=%s result=%s',
+                media,
+                db_uuid,
+                base_url,
+                result,
+            )
+            return result
         except Exception:
             _logger.exception('Invalid URL template for media %s', media)
             return _MEDIA_ERROR_TOKEN[media]
@@ -179,4 +194,3 @@ class SocialRelayServiceController(http.Controller):
         # Replace this with your provider call if you need to really dispatch notifications.
         _logger.info('social_relay_service received push batch: %s token(s)', len(tokens))
         return self._jsonrpc_response(rpc_id, result={'accepted': len(tokens)})
-
