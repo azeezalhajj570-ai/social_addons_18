@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+from urllib.parse import urlparse
 
 import requests
 from werkzeug.urls import url_join
@@ -45,6 +46,11 @@ class SocialMediaCustomRelay(models.Model):
         except requests.RequestException as err:
             raise UserError(_("Failed to contact relay endpoint: %s", err))
 
+    @staticmethod
+    def _is_valid_external_url(value):
+        parsed = urlparse((value or '').strip())
+        return parsed.scheme in ('http', 'https') and bool(parsed.netloc)
+
     def _relay_add_accounts(self, media, route, callback_path, error_tokens):
         db_uuid = self.env['ir.config_parameter'].sudo().get_param('database.uuid')
         endpoint = self._get_custom_relay_endpoint()
@@ -56,22 +62,34 @@ class SocialMediaCustomRelay(models.Model):
             db_uuid,
             callback_url,
         )
-        response = self._relay_get(
+        relay_response = self._relay_get(
             route,
             params={
                 'returning_url': callback_url,
                 'db_uuid': db_uuid,
             },
-        ).text
+        )
+        response = (relay_response.text or '').strip()
         _logger.info(
-            'social_custom_relay: add account response media=%s value=%s',
+            'social_custom_relay: add account response media=%s status=%s content_type=%s value=%s',
             media,
+            relay_response.status_code,
+            relay_response.headers.get('Content-Type'),
             response,
         )
+        if relay_response.status_code >= 400:
+            raise UserError(_("Relay endpoint returned HTTP %s. Please check your relay URL configuration.", relay_response.status_code))
         if response == 'unauthorized':
             raise UserError(_("You don't have an active subscription. Please buy one here: %s", 'https://www.odoo.com/buy'))
         if response in error_tokens:
             raise UserError(_("The url that this service requested returned an error. Please contact the author of the app."))
+        if not self._is_valid_external_url(response):
+            raise UserError(_(
+                "Relay endpoint returned an invalid OAuth URL. "
+                "Expected an absolute http(s) URL, got: %s. "
+                "Please configure 'social.custom_relay_endpoint' to a reachable relay service.",
+                response[:200],
+            ))
         return {'type': 'ir.actions.act_url', 'url': response, 'target': 'self'}
 
     def _add_facebook_accounts_from_iap(self):
