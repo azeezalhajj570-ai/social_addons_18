@@ -12,6 +12,7 @@ from werkzeug.urls import url_join
 from werkzeug.wrappers import Response
 
 from odoo import http
+from odoo.exceptions import UserError
 from odoo.http import request
 
 _logger = logging.getLogger(__name__)
@@ -37,6 +38,23 @@ class SocialRelayServiceController(http.Controller):
 
     def _icp(self):
         return request.env['ir.config_parameter'].sudo()
+
+    def _media(self, media_type):
+        return request.env['social.media'].sudo().search([('media_type', '=', media_type)], limit=1)
+
+    def _oauth_error(self, media, status=400):
+        token = _MEDIA_ERROR_TOKEN[media]
+        return Response(token, mimetype='text/plain', status=status)
+
+    def _redirect_from_action(self, media, action):
+        url = (action or {}).get('url')
+        if not url:
+            return self._oauth_error(media)
+        return request.redirect(url, local=False)
+
+    @staticmethod
+    def _is_truthy(value):
+        return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
 
     def _render_add_accounts_url(self, media, returning_url, db_uuid):
         if not returning_url or not db_uuid:
@@ -87,6 +105,67 @@ class SocialRelayServiceController(http.Controller):
     @http.route('/api/social/linkedin/1/add_accounts', type='http', auth='public', methods=['GET'], csrf=False)
     def add_linkedin_accounts(self, returning_url=None, db_uuid=None, **kwargs):
         return Response(self._render_add_accounts_url('linkedin', returning_url, db_uuid), mimetype='text/plain')
+
+    @http.route('/oauth/facebook', type='http', auth='user', methods=['GET'], csrf=False)
+    def oauth_facebook(self, returning_url=None, db_uuid=None, **kwargs):
+        facebook_app_id = self._icp().get_param('social.facebook_app_id')
+        facebook_client_secret = self._icp().get_param('social.facebook_client_secret')
+        media = self._media('facebook')
+        if not media or not facebook_app_id or not facebook_client_secret:
+            return self._oauth_error('facebook')
+        action = media._add_facebook_accounts_from_configuration(facebook_app_id)
+        return self._redirect_from_action('facebook', action)
+
+    @http.route('/oauth/instagram', type='http', auth='user', methods=['GET'], csrf=False)
+    def oauth_instagram(self, returning_url=None, db_uuid=None, **kwargs):
+        instagram_app_id = self._icp().get_param('social.instagram_app_id')
+        instagram_client_secret = self._icp().get_param('social.instagram_client_secret')
+        media = self._media('instagram')
+        if not media or not instagram_app_id or not instagram_client_secret:
+            return self._oauth_error('instagram')
+        action = media._add_instagram_accounts_from_configuration(instagram_app_id)
+        return self._redirect_from_action('instagram', action)
+
+    @http.route('/oauth/youtube', type='http', auth='user', methods=['GET'], csrf=False)
+    def oauth_youtube(self, returning_url=None, db_uuid=None, **kwargs):
+        youtube_client_id = (
+            self._icp().get_param('social.youtube_oauth_client_id')
+            or self._icp().get_param('social_relay_service.youtube_client_id')
+        )
+        youtube_client_secret = (
+            self._icp().get_param('social.youtube_oauth_client_secret')
+            or self._icp().get_param('social_relay_service.youtube_client_secret')
+        )
+        media = self._media('youtube')
+        if not media or not youtube_client_id or not youtube_client_secret:
+            return self._oauth_error('youtube')
+        action = media._add_youtube_accounts_from_configuration(youtube_client_id)
+        return self._redirect_from_action('youtube', action)
+
+    @http.route('/oauth/twitter', type='http', auth='user', methods=['GET'], csrf=False)
+    def oauth_twitter(self, returning_url=None, db_uuid=None, **kwargs):
+        consumer_key = self._icp().get_param('social.twitter_consumer_key')
+        consumer_secret = self._icp().get_param('social.twitter_consumer_secret_key')
+        media = self._media('twitter')
+        if not media or not consumer_key or not consumer_secret:
+            return self._oauth_error('twitter')
+        try:
+            action = media._add_twitter_accounts_from_configuration()
+        except UserError:
+            _logger.exception('social_relay_service: twitter oauth generation failed')
+            return self._oauth_error('twitter')
+        return self._redirect_from_action('twitter', action)
+
+    @http.route('/oauth/linkedin', type='http', auth='user', methods=['GET'], csrf=False)
+    def oauth_linkedin(self, returning_url=None, db_uuid=None, **kwargs):
+        linkedin_use_own_account = self._icp().get_param('social.linkedin_use_own_account')
+        linkedin_app_id = self._icp().get_param('social.linkedin_app_id')
+        linkedin_client_secret = self._icp().get_param('social.linkedin_client_secret')
+        media = self._media('linkedin')
+        if not media or not self._is_truthy(linkedin_use_own_account) or not linkedin_app_id or not linkedin_client_secret:
+            return self._oauth_error('linkedin')
+        action = media._add_linkedin_accounts_from_configuration(linkedin_app_id)
+        return self._redirect_from_action('linkedin', action)
 
     @http.route('/api/social/youtube/1/refresh_token', type='http', auth='public', methods=['GET'], csrf=False)
     def refresh_youtube_token(self, db_uuid=None, refresh_token=None, **kwargs):

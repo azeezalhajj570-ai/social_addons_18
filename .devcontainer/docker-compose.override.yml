@@ -1,0 +1,7 @@
+services:
+  odoo:
+    # keep container alive for devcontainer attach even if Odoo exits
+    command: ["bash", "-lc", "odoo -c /app/odoo.conf || tail -f /dev/null"]
+    # optional: add extra dev-friendly env if needed
+    environment:
+      - TZ=UTC
