@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="menu_about_us_theazeeztech" model="website.menu">
+        <field name="name">About Us</field>
+        <field name="url">/about-us</field>
+        <field name="parent_id" ref="website.main_menu"/>
+        <field name="sequence" eval="60"/>
+    </record>
+
+    <record id="menu_privacy_policy_theazeeztech" model="website.menu">
+        <field name="name">Privacy Policy</field>
+        <field name="url">/privacy-policy</field>
+        <field name="parent_id" ref="website.main_menu"/>
+        <field name="sequence" eval="61"/>
+    </record>
+
+    <record id="menu_terms_of_service_theazeeztech" model="website.menu">
+        <field name="name">Terms of Service</field>
+        <field name="url">/terms-of-service</field>
+        <field name="parent_id" ref="website.main_menu"/>
+        <field name="sequence" eval="62"/>
+    </record>
+
+    <record id="menu_contact_us_theazeeztech" model="website.menu">
+        <field name="name">Contact Us</field>
+        <field name="url">/contact-us</field>
+        <field name="parent_id" ref="website.main_menu"/>
+        <field name="sequence" eval="63"/>
+    </record>
+</odoo>

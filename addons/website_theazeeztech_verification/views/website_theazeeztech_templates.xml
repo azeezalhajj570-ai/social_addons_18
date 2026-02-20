@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="page_about_us" name="About Us - Theazeeztech">
+        <t t-call="website.layout">
+            <div id="wrap" class="oe_structure">
+                <section class="s_text_block pt64 pb64">
+                    <div class="container">
+                        <h1>About Theazeeztech</h1>
+                        <p>
+                            Theazeeztech is a technology brand operated and managed by
+                            <strong>Hamed Trading Company LLC</strong>, a legally registered company in the
+                            Republic of Yemen.
+                        </p>
+                        <p>Legal Business Name: Hamed Trading Company LLC</p>
+                        <p>Country of Registration: Republic of Yemen</p>
+                        <p>
+                            Official Website:
+                            <a href="https://hamedco.com" target="_blank" rel="noopener noreferrer">
+                                https://hamedco.com
+                            </a>
+                        </p>
+                    </div>
+                </section>
+            </div>
+        </t>
+    </template>
+
+    <template id="page_privacy_policy" name="Privacy Policy - Theazeeztech">
+        <t t-call="website.layout">
+            <div id="wrap" class="oe_structure">
+                <section class="s_text_block pt64 pb64">
+                    <div class="container">
+                        <h1>Privacy Policy</h1>
+                        <p>
+                            This website (hamedco.com) is owned and operated by Hamed Trading Company LLC, a
+                            company registered in the Republic of Yemen, operating under the brand name
+                            &quot;Theazeeztech&quot;.
+                        </p>
+                    </div>
+                </section>
+            </div>
+        </t>
+    </template>
+
+    <template id="page_terms_of_service" name="Terms of Service - Theazeeztech">
+        <t t-call="website.layout">
+            <div id="wrap" class="oe_structure">
+                <section class="s_text_block pt64 pb64">
+                    <div class="container">
+                        <h1>Terms of Service</h1>
+                        <p>
+                            The use of this website (hamedco.com) and services published under the brand
+                            &quot;Theazeeztech&quot; is provided by Hamed Trading Company LLC, a legally registered
+                            company in the Republic of Yemen.
+                        </p>
+                        <p>
+                            By using this website, you agree to comply with applicable laws and these terms.
+                            For questions regarding these terms, contact us at
+                            <a href="mailto:info@hamedco.com">info@hamedco.com</a>.
+                        </p>
+                    </div>
+                </section>
+            </div>
+        </t>
+    </template>
+
+    <template id="page_contact_us" name="Contact Us - Theazeeztech">
+        <t t-call="website.layout">
+            <div id="wrap" class="oe_structure">
+                <section class="s_text_block pt64 pb64">
+                    <div class="container">
+                        <h1>Contact Us</h1>
+                        <p>Company: Hamed Trading Company LLC</p>
+                        <p>Brand: Theazeeztech</p>
+                        <p>Location: Sana'a, Republic of Yemen</p>
+                        <p>
+                            Email:
+                            <a href="mailto:info@hamedco.com">info@hamedco.com</a>
+                        </p>
+                    </div>
+                </section>
+            </div>
+        </t>
+    </template>
+
+    <template id="website_layout_footer_inherit" inherit_id="website.layout" name="Theazeeztech Legal Footer">
+        <xpath expr="//footer" position="inside">
+            <div id="theazeeztech_meta_legal_footer" class="container pt16 pb16">
+                <div class="text-center">
+                    <p class="mb-0">© 2026 Hamed Trading Company LLC - All Rights Reserved</p>
+                    <p class="mb-0">Operating Brand: Theazeeztech</p>
+                    <p class="mb-0">Registered in the Republic of Yemen</p>
+                </div>
+            </div>
+        </xpath>
+    </template>
+</odoo>
