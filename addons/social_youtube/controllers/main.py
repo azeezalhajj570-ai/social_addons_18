@@ -35,15 +35,8 @@ class SocialYoutubeController(SocialController):
                 {'error_message': _('YouTube did not provide a valid authorization code.')})
 
         youtube_media = request.env.ref('social_youtube.social_media_youtube')
-        icp = request.env['ir.config_parameter'].sudo()
-        youtube_oauth_client_id = (
-            icp.get_param('social.youtube_oauth_client_id')
-            or icp.get_param('social_relay_service.youtube_client_id')
-        )
-        youtube_oauth_client_secret = (
-            icp.get_param('social.youtube_oauth_client_secret')
-            or icp.get_param('social_relay_service.youtube_client_secret')
-        )
+        youtube_oauth_client_id = request.env['ir.config_parameter'].sudo().get_param('social.youtube_oauth_client_id')
+        youtube_oauth_client_secret = request.env['ir.config_parameter'].sudo().get_param('social.youtube_oauth_client_secret')
 
         if iap_access_token and iap_refresh_token:
             access_token = iap_access_token

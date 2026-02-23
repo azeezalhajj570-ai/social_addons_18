@@ -22,15 +22,8 @@ class SocialMediaYoutube(models.Model):
         if self.media_type != 'youtube':
             return super(SocialMediaYoutube, self)._action_add_account()
 
-        icp = self.env['ir.config_parameter'].sudo()
-        youtube_oauth_client_id = (
-            icp.get_param('social.youtube_oauth_client_id')
-            or icp.get_param('social_relay_service.youtube_client_id')
-        )
-        youtube_oauth_client_secret = (
-            icp.get_param('social.youtube_oauth_client_secret')
-            or icp.get_param('social_relay_service.youtube_client_secret')
-        )
+        youtube_oauth_client_id = self.env['ir.config_parameter'].sudo().get_param('social.youtube_oauth_client_id')
+        youtube_oauth_client_secret = self.env['ir.config_parameter'].sudo().get_param('social.youtube_oauth_client_secret')
         if youtube_oauth_client_id and youtube_oauth_client_secret:
             return self._add_youtube_accounts_from_configuration(youtube_oauth_client_id)
         else:
