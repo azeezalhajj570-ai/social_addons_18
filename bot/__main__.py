@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import contextlib
 
 import sentry_sdk
 import uvloop
@@ -13,9 +14,13 @@ from bot.handlers.metrics import MetricsView
 from bot.keyboards.default_commands import remove_default_commands, set_default_commands
 from bot.middlewares import register_middlewares
 from bot.middlewares.prometheus import prometheus_middleware_factory
+from bot.services.scheduler import scheduler_loop
+
+scheduler_task: asyncio.Task[None] | None = None
 
 
 async def on_startup() -> None:
+    global scheduler_task
     logger.info("bot starting...")
 
     register_middlewares(dp)
@@ -44,13 +49,23 @@ async def on_startup() -> None:
     logger.info(f"Privacy Mode - {states[not bot_info.can_read_all_group_messages]}")
     logger.info(f"Inline Mode  - {states[bot_info.supports_inline_queries]}")
 
+    scheduler_task = asyncio.create_task(scheduler_loop(bot))
+    logger.info("scheduler started")
+
     logger.info("bot started")
 
 
 async def on_shutdown() -> None:
+    global scheduler_task
     logger.info("bot stopping...")
 
     await remove_default_commands(bot)
+
+    if scheduler_task is not None:
+        scheduler_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await scheduler_task
+        scheduler_task = None
 
     await dp.storage.close()
     await dp.fsm.storage.close()

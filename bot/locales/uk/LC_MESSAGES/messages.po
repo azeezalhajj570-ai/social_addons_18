@@ -21,44 +21,47 @@ msgstr ""
 
 #: bot/handlers/export_users.py:29
 msgid "user counter: <b>{count}</b>"
-msgstr ""
+msgstr "عدد المستخدمين: <b>{count}</b>"
 
 #: bot/handlers/info.py:11
 msgid "about"
-msgstr ""
+msgstr "ℹ️ <b>حول البوت</b>"
 
 #: bot/handlers/menu.py:13 bot/handlers/start.py:16
 msgid "title main keyboard"
-msgstr ""
+msgstr "📒 <b>القائمة الرئيسية</b>"
 
 #: bot/handlers/support.py:13
 msgid "support text"
-msgstr ""
+msgstr "🤝 الدعم الفني"
 
 #: bot/keyboards/inline/contacts.py:11 bot/keyboards/inline/contacts.py:22
 #: bot/keyboards/inline/menu.py:12
 msgid "support button"
-msgstr ""
+msgstr "الدعم"
 
 #: bot/keyboards/inline/contacts.py:23
 msgid "back button"
-msgstr ""
+msgstr "🔙 رجوع"
 
 #: bot/keyboards/inline/menu.py:9
 msgid "wallet button"
-msgstr ""
+msgstr "👛 المحفظة"
 
 #: bot/keyboards/inline/menu.py:10
 msgid "premium button"
-msgstr ""
+msgstr "🆙 الحصول على بريميوم"
 
 #: bot/keyboards/inline/menu.py:11
 msgid "info button"
-msgstr ""
+msgstr "معلومات"
 
 #: bot/middlewares/auth.py:41
 msgid "first message"
 msgstr ""
+"👋 <b>مرحبًا بك في البوت.</b>\n"
+"\n"
+"لبدء استخدام البوت اكتب /menu"
 
 #~ msgid ""
 #~ "👋 <b>Добро пожаловать в бот.</b>\n"

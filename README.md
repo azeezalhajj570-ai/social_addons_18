@@ -71,6 +71,53 @@
     uv run alembic upgrade head
     ```
 
+## 🛡️ Group Manager (ported)
+
+This template now includes a production-ready group moderation module ported from `group_manager_bot` with PostgreSQL-backed state and aiogram handlers:
+
+-   anti-links with warning counter and auto mute
+-   anti-bots (auto-ban new bot accounts)
+-   dynamic remove regex rules
+-   keyword routes with optional gate group membership
+-   participation gates (must join required groups before posting)
+-   optional hiding of join/leave system messages
+-   admin toolkit: ban/unban/kick/mute/unmute, promote/demote, purge, lock/unlock, filters
+-   owner operations: global ban and announcements across tracked groups
+
+### Moderation Commands
+
+-   `/settings`
+-   `/toggle_anti_links`
+-   `/toggle_anti_bots`
+-   `/toggle_hide_system`
+-   `/toggle_warn_in_dm`
+-   `/toggle_warn_in_group`
+-   `/toggle_temp_ban`
+-   `/set_temp_ban_seconds <seconds>`
+-   `/ban /unban /kick /mute /unmute`
+-   `/warn /unwarn`
+-   `/promote /demote`
+-   `/purge <count>`
+-   `/filter <keyword>` (as reply), `/stop <keyword>`, `/filterlist`
+-   `/lockall`, `/unlockall`
+-   `/dwarn`, `/dmute`
+-   `/set_welcome <text>`, `/set_goodbye <text>`, `/set_rules <text>`
+-   `/set_antispam <limit> <window_seconds>`, `/set_antiflood <limit> <window_seconds>`
+-   `/announcement <text>` (owner), `/gban` (owner)
+-   `/daisy` (inline command menu)
+-   `/resetwarns` (reply to target user in group)
+-   `/addrule <regex>`
+-   `/delrule <id>`
+-   `/listrules`
+-   `/addroute <keyword> <destination> [gate_group_id]`
+-   `/delroute <keyword>`
+-   `/listroutes`
+-   `/addgate <@required_group_or_link> [join_url]`
+-   `/delgate <gate_group_id>`
+-   `/listgates`
+
+Private-chat mode is supported for management commands by passing target group first, e.g. `/addrule @mygroup spam|promo`.
+
 ## 🌍 Environment variables
 
 to launch the bot you only need a token bot, database and redis settings, everything else can be left out
@@ -79,6 +126,11 @@ to launch the bot you only need a token bot, database and redis settings, everyt
 | ------------------------ | ------------------------------------------------------------------------------------------- |
 | `BOT_TOKEN`              | Telegram bot API token                                                                      |
 | `RATE_LIMIT`             | Maximum number of requests allowed per minute for rate limiting                             |
+| `OWNER_ID`               | Telegram user id with owner-level permissions (announcement/gban)                            |
+| `OWNER_USERNAME`         | Owner username shown in menus/messages                                                       |
+| `MAX_WARNS`              | Warning threshold before automatic mute for anti-links                                       |
+| `MUTE_SECONDS`           | Default mute duration in seconds when user reaches warning threshold                         |
+| `LINK_RE`                | Regex used by anti-links detector                                                            |
 | `DEBUG`                  | Enable or disable debugging mode (e.g., `True` or `False`)                                  |
 | `USE_WEBHOOK`            | Flag to indicate whether the bot should use a webhook for updates (e.g., `True` or `False`) |
 | `WEBHOOK_BASE_URL`       | Base URL for the webhook                                                                    |

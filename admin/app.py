@@ -17,8 +17,30 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect
 from wtforms import PasswordField
 
+from admin.views.moderation import (
+    BotCommandsView,
+    DynamicRulesView,
+    FiltersView,
+    GroupMetaView,
+    GroupSettingsView,
+    LinkRoutesView,
+    ParticipationGatesView,
+    ScheduledMessagesView,
+    WarningsView,
+)
 from admin.views.users import UserView as AppUserView
-from bot.database.models import UserModel as AppUserModel
+from bot.database.models.moderation import (
+    BotCommandModel as AppBotCommandModel,
+    DynamicRuleModel as AppDynamicRuleModel,
+    FilterModel as AppFilterModel,
+    GroupMetaModel as AppGroupMetaModel,
+    GroupSettingsModel as AppGroupSettingsModel,
+    LinkRouteModel as AppLinkRouteModel,
+    ParticipationGateModel as AppParticipationGateModel,
+    ScheduledMessageModel as AppScheduledMessageModel,
+    WarningModel as AppWarningModel,
+)
+from bot.database.models.user import UserModel as AppUserModel
 
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
@@ -161,15 +183,16 @@ def index() -> Response:
 admin = Admin(
     app,
     name="Telegram Bot",
-    base_template="my_master.html",
     index_view=CustomAdminIndexView(
         name="Home",
         url="/admin",
         menu_icon_type=ICON_TYPE_FONT_AWESOME,
         menu_icon_value="fa-home",
     ),
-    template_mode="bootstrap4",
 )
+# apply configuration that used to be constructor parameters
+admin.template_mode = "bootstrap4"
+admin.base_template = "my_master.html"
 
 admin.add_view(
     AppUserView(
@@ -200,6 +223,106 @@ admin.add_view(
         menu_icon_value="fa-tags",
         name="Roles",
         endpoint="roles",
+    ),
+)
+
+admin.add_view(
+    GroupSettingsView(
+        AppGroupSettingsModel,
+        db.session,
+        menu_icon_type=ICON_TYPE_FONT_AWESOME,
+        menu_icon_value="fa-sliders",
+        name="Group Settings",
+        endpoint="group_settings",
+        category="Bot Moderation",
+    ),
+)
+admin.add_view(
+    GroupMetaView(
+        AppGroupMetaModel,
+        db.session,
+        menu_icon_type=ICON_TYPE_FONT_AWESOME,
+        menu_icon_value="fa-cogs",
+        name="Group Meta",
+        endpoint="group_meta",
+        category="Bot Moderation",
+    ),
+)
+admin.add_view(
+    WarningsView(
+        AppWarningModel,
+        db.session,
+        menu_icon_type=ICON_TYPE_FONT_AWESOME,
+        menu_icon_value="fa-exclamation-triangle",
+        name="Warnings",
+        endpoint="warnings",
+        category="Bot Moderation",
+    ),
+)
+admin.add_view(
+    DynamicRulesView(
+        AppDynamicRuleModel,
+        db.session,
+        menu_icon_type=ICON_TYPE_FONT_AWESOME,
+        menu_icon_value="fa-code",
+        name="Dynamic Rules",
+        endpoint="dynamic_rules",
+        category="Bot Moderation",
+    ),
+)
+admin.add_view(
+    LinkRoutesView(
+        AppLinkRouteModel,
+        db.session,
+        menu_icon_type=ICON_TYPE_FONT_AWESOME,
+        menu_icon_value="fa-random",
+        name="Link Routes",
+        endpoint="link_routes",
+        category="Bot Moderation",
+    ),
+)
+admin.add_view(
+    ParticipationGatesView(
+        AppParticipationGateModel,
+        db.session,
+        menu_icon_type=ICON_TYPE_FONT_AWESOME,
+        menu_icon_value="fa-unlock-alt",
+        name="Participation Gates",
+        endpoint="participation_gates",
+        category="Bot Moderation",
+    ),
+)
+admin.add_view(
+    FiltersView(
+        AppFilterModel,
+        db.session,
+        menu_icon_type=ICON_TYPE_FONT_AWESOME,
+        menu_icon_value="fa-filter",
+        name="Filters",
+        endpoint="filters",
+        category="Bot Moderation",
+    ),
+)
+admin.add_view(
+    ScheduledMessagesView(
+        AppScheduledMessageModel,
+        db.session,
+        menu_icon_type=ICON_TYPE_FONT_AWESOME,
+        menu_icon_value="fa-clock-o",
+        name="Scheduled Messages",
+        endpoint="scheduled_messages",
+        category="Bot Moderation",
+    ),
+)
+admin.add_view(
+    BotCommandsView(
+        AppBotCommandModel,
+        db.session,
+        menu_icon_type=ICON_TYPE_FONT_AWESOME,
+        menu_icon_value="fa-terminal",
+        name="Bot Commands",
+        endpoint="bot_commands",
+        category="Bot Moderation",
     ),
 )
 

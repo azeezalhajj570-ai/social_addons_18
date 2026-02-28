@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -36,7 +37,16 @@ class WebhookSettings(EnvBaseSettings):
 class BotSettings(WebhookSettings):
     BOT_TOKEN: str
     SUPPORT_URL: str | None = None
+    OWNER_ID: int | None = None
+    OWNER_USERNAME: str | None = None
     RATE_LIMIT: int | float = 0.5  # for throttling control
+    MAX_WARNS: int = 3
+    MUTE_SECONDS: int = 3600
+    LINK_RE: str = r"(https?://|t\.me/|telegram\.me/|joinchat/)"
+
+    @property
+    def link_pattern(self) -> re.Pattern[str]:
+        return re.compile(self.LINK_RE, re.IGNORECASE)
 
 
 class DBSettings(EnvBaseSettings):

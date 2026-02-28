@@ -4,16 +4,16 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
 def main_keyboard() -> InlineKeyboardMarkup:
-    """Use in main menu."""
+    """Main feature menu (group manager categories)."""
     buttons = [
-        [InlineKeyboardButton(text=_("wallet button"), callback_data="wallet")],
-        [InlineKeyboardButton(text=_("premium button"), callback_data="premium")],
-        [InlineKeyboardButton(text=_("info button"), callback_data="info")],
-        [InlineKeyboardButton(text=_("support button"), callback_data="support")],
+        [InlineKeyboardButton(text="👮 أوامر المشرفين", callback_data="gm:admin")],
+        [InlineKeyboardButton(text="👥 أوامر المستخدمين", callback_data="gm:user")],
+        [InlineKeyboardButton(text="🎉 أوامر ترفيهية", callback_data="gm:fun")],
+        [InlineKeyboardButton(text="⚙️ الإعدادات", callback_data="gm:settings")],
     ]
 
     keyboard = InlineKeyboardBuilder(markup=buttons)
 
-    keyboard.adjust(1, 1, 2)
+    keyboard.adjust(1)
 
     return keyboard.as_markup()
