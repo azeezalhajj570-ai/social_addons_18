@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.core.config import settings
 from bot.services import moderation
-from bot.utils.telegram import bot_can_ban, bot_can_delete
+from bot.utils.telegram import bot_can_ban, bot_can_delete, is_member_of_chat
 
 from .helpers import admin_guard, is_owner, resolve_gate_group, resolve_target_group
 
@@ -241,11 +241,17 @@ async def del_gate(message: types.Message, bot: Bot, session: AsyncSession) -> N
     if not cmd_args:
         await message.answer("الاستخدام: /delgate gate_group_id")
         return
+
+    gid: int
     try:
         gid = int(cmd_args[0])
     except ValueError:
-        await message.answer("gate_group_id يجب أن يكون رقمًا صحيحًا")
-        return
+        gate = await resolve_gate_group(bot, cmd_args[0])
+        if gate is None:
+            await message.answer("gate_group_id يجب أن يكون رقمًا صحيحًا أو @group/link صحيح")
+            return
+        gid = gate[0]
+
     deleted = await moderation.delete_participation_gate(session, chat_id, gid)
     await message.answer("تم حذف البوابة" if deleted else "البوابة غير موجودة")
 
@@ -264,6 +270,46 @@ async def list_gates(message: types.Message, bot: Bot, session: AsyncSession) ->
         "بوابات المشاركة:\n" + "\n".join(f"- `{g.gate_group_id}` {g.gate_title} -> {g.join_url}" for g in gates),
         parse_mode=ParseMode.MARKDOWN,
     )
+
+
+@router.message(Command("gatehealth"))
+async def gate_health(message: types.Message, bot: Bot, session: AsyncSession) -> None:
+    resolved = await resolve_target_group(message, bot, _cmd_args(message))
+    if resolved is None:
+        return
+    chat_id, cmd_args = resolved
+    gates = await moderation.list_participation_gates(session, chat_id)
+    if not gates:
+        await message.answer("لا توجد بوابات مشاركة في هذه المجموعة")
+        return
+
+    inspect_user_id = message.from_user.id if message.from_user else 0
+    if message.reply_to_message and message.reply_to_message.from_user:
+        inspect_user_id = message.reply_to_message.from_user.id
+    elif cmd_args:
+        try:
+            inspect_user_id = int(cmd_args[0])
+        except ValueError:
+            pass
+
+    can_delete = await bot_can_delete(bot, chat_id)
+    can_ban = await bot_can_ban(bot, chat_id)
+    lines = [
+        f"Gate health for chat `{chat_id}`",
+        f"- inspect_user_id: `{inspect_user_id}`",
+        f"- bot_can_delete: `{can_delete}`",
+        f"- bot_can_ban: `{can_ban}`",
+        "- gates:",
+    ]
+    for gate in gates:
+        try:
+            joined = await is_member_of_chat(bot, gate.gate_group_id, inspect_user_id)
+            status = "joined" if joined else "missing"
+        except Exception as exc:
+            status = f"check_error: {type(exc).__name__}"
+        lines.append(f"  - `{gate.gate_group_id}` {gate.gate_title} => {status}")
+
+    await message.answer("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
 @router.message(Command("addschedule"))
