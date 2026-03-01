@@ -48,20 +48,22 @@ This repository includes `user_client_app` as separate production-ready services
 
 -   `user-client-db-init`: one-shot init that creates user-client DB in the existing PostgreSQL container
 -   `user-client`: MTProto user client worker
--   `user-client-auth`: web login/session helper
 
 Basic setup:
 
 ```bash
 cp .env.user.example .env.user
 # edit .env.user and set API_ID/API_HASH
-docker compose up -d --build user-client user-client-auth
+docker compose up -d --build user-client
 ```
 
-Auth web endpoint:
+CLI login (no Flask):
 
--   local compose: `http://<host>:${USER_CLIENT_AUTH_PORT}` (default `8000`)
--   prod compose: exposed internally on `${USER_CLIENT_AUTH_PORT}` (put behind reverse proxy)
+```bash
+docker compose -f docker-compose-prod.yml run --rm user-client python -m user_client_app.auth_cli
+```
+
+Then copy printed `SESSION_STRING=...` into `.env.user` and restart `user-client`.
 
 Runtime data persistence:
 

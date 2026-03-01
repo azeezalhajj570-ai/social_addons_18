@@ -3,6 +3,13 @@
 
 # exclusion
 !/bot/
+!/admin/
+!/user_client_app/
+!/requirements-user-client.txt
+!/Dockerfile.user-client
+!/docker-compose.yml
+!/docker-compose-prod.yml
+!/.env.user.example
 
 !/alembic.ini
 !/pyproject.toml
