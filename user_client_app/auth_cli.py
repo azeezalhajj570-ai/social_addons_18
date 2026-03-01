@@ -12,7 +12,9 @@ from user_client_app.config import load_config
 def _require_phone(phone_number: str) -> str:
     value = phone_number.strip()
     if not value:
-        raise SystemExit("Missing PHONE_NUMBER in .env.user for CLI login")
+        value = input("Enter Telegram phone number (international format, e.g. +15551234567): ").strip()
+    if not value:
+        raise SystemExit("Phone number is required for CLI login")
     return value
 
 
