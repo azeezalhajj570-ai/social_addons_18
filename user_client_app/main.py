@@ -73,3 +73,7 @@ def main() -> None:
     except Exception as exc:
         print(f"user-client startup failed: {type(exc).__name__}: {exc}")
         raise
+
+
+if __name__ == "__main__":
+    main()
