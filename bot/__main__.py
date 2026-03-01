@@ -5,10 +5,11 @@ import contextlib
 import sentry_sdk
 import uvloop
 from loguru import logger
+from redis.asyncio.lock import Lock
 from sentry_sdk.integrations.loguru import LoggingLevels, LoguruIntegration
 
 from bot.core.config import settings
-from bot.core.loader import app, bot, dp
+from bot.core.loader import app, bot, dp, redis_client
 from bot.handlers import get_handlers_router
 from bot.handlers.metrics import MetricsView
 from bot.keyboards.default_commands import remove_default_commands, set_default_commands
@@ -17,9 +18,23 @@ from bot.middlewares.prometheus import prometheus_middleware_factory
 from bot.services.scheduler import scheduler_loop
 
 scheduler_task: asyncio.Task[None] | None = None
+polling_lock_task: asyncio.Task[None] | None = None
+polling_lock: Lock | None = None
+
+
+async def keep_polling_lock_alive() -> None:
+    while polling_lock is not None:
+        await asyncio.sleep(settings.POLLING_LOCK_RENEW_EVERY_SECONDS)
+        try:
+            # Redis-py versions differ: some support replace_ttl, older ones don't.
+            await polling_lock.extend(settings.POLLING_LOCK_TTL_SECONDS, replace_ttl=True)
+        except TypeError:
+            await polling_lock.extend(settings.POLLING_LOCK_TTL_SECONDS)
 
 
 async def on_startup() -> None:
+    global polling_lock
+    global polling_lock_task
     global scheduler_task
     logger.info("bot starting...")
 
@@ -49,6 +64,23 @@ async def on_startup() -> None:
     logger.info(f"Privacy Mode - {states[not bot_info.can_read_all_group_messages]}")
     logger.info(f"Inline Mode  - {states[bot_info.supports_inline_queries]}")
 
+    if not settings.USE_WEBHOOK:
+        polling_lock = redis_client.lock(
+            name=settings.POLLING_LOCK_KEY,
+            timeout=settings.POLLING_LOCK_TTL_SECONDS,
+            blocking=False,
+            thread_local=False,
+        )
+        lock_acquired = await polling_lock.acquire()
+        if not lock_acquired:
+            logger.error(
+                "polling lock '%s' is already held; another bot instance is likely running with the same token",
+                settings.POLLING_LOCK_KEY,
+            )
+            raise SystemExit(1)
+        polling_lock_task = asyncio.create_task(keep_polling_lock_alive())
+        logger.info("polling lock acquired")
+
     scheduler_task = asyncio.create_task(scheduler_loop(bot))
     logger.info("scheduler started")
 
@@ -56,6 +88,8 @@ async def on_startup() -> None:
 
 
 async def on_shutdown() -> None:
+    global polling_lock
+    global polling_lock_task
     global scheduler_task
     logger.info("bot stopping...")
 
@@ -66,6 +100,17 @@ async def on_shutdown() -> None:
         with contextlib.suppress(asyncio.CancelledError):
             await scheduler_task
         scheduler_task = None
+
+    if polling_lock_task is not None:
+        polling_lock_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await polling_lock_task
+        polling_lock_task = None
+
+    if polling_lock is not None:
+        with contextlib.suppress(Exception):
+            await polling_lock.release()
+        polling_lock = None
 
     await dp.storage.close()
     await dp.fsm.storage.close()
@@ -130,6 +175,7 @@ async def main() -> None:
     if settings.USE_WEBHOOK:
         await setup_webhook()
     else:
+        await bot.delete_webhook(drop_pending_updates=False)
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 

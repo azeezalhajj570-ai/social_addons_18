@@ -43,6 +43,9 @@ class BotSettings(WebhookSettings):
     MAX_WARNS: int = 3
     MUTE_SECONDS: int = 3600
     LINK_RE: str = r"(https?://|t\.me/|telegram\.me/|joinchat/)"
+    POLLING_LOCK_KEY: str = "telegram_bot:polling_lock"
+    POLLING_LOCK_TTL_SECONDS: int = 120
+    POLLING_LOCK_RENEW_EVERY_SECONDS: int = 40
 
     @property
     def link_pattern(self) -> re.Pattern[str]:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import re
 import time
 from collections import defaultdict, deque
@@ -48,6 +49,33 @@ def _hit_bucket(bucket: dict[tuple[int, int], deque[float]], key: tuple[int, int
     return len(q) > limit
 
 
+async def _missing_gates(
+    bot: Bot,
+    session: AsyncSession,
+    chat_id: int,
+    user_id: int,
+) -> list[tuple[str, str]]:
+    missing: list[tuple[str, str]] = []
+    gates = [gate for gate in await moderation.list_participation_gates(session, chat_id) if gate.enabled]
+    for gate in gates:
+        try:
+            in_gate = await is_member_of_chat(bot, gate.gate_group_id, user_id)
+        except Exception:
+            in_gate = False
+        if not in_gate:
+            missing.append((gate.gate_title, gate.join_url))
+    return missing
+
+
+async def _send_gate_prompt(chat_id: int, bot: Bot, missing: list[tuple[str, str]]) -> None:
+    buttons = [[types.InlineKeyboardButton(text=title[:32], url=url)] for title, url in missing]
+    await bot.send_message(
+        chat_id,
+        "يرجى الانضمام إلى المجموعات المطلوبة قبل إرسال الرسائل هنا.",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+
+
 @router.message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}) & F.new_chat_members)
 async def anti_bots(message: types.Message, bot: Bot, session: AsyncSession) -> None:
     await moderation.ensure_group(session, message.chat.id)
@@ -85,6 +113,29 @@ async def welcome_goodbye_and_hide_system(message: types.Message, bot: Bot, sess
         except Exception:
             pass
 
+    if not message.new_chat_members:
+        return
+
+    if not await bot_can_ban(bot, message.chat.id):
+        return
+
+    for member in message.new_chat_members:
+        if member.is_bot:
+            continue
+        missing = await _missing_gates(bot, session, message.chat.id, member.id)
+        if not missing:
+            continue
+        try:
+            await bot.ban_chat_member(message.chat.id, member.id)
+            await bot.unban_chat_member(message.chat.id, member.id, only_if_banned=True)
+        except Exception as exc:
+            logger.warning("gate kick failed chat={} user={} err={}", message.chat.id, member.id, exc)
+            continue
+        try:
+            await _send_gate_prompt(message.chat.id, bot, missing)
+        except Exception:
+            pass
+
 
 @router.message(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))
 async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSession) -> None:
@@ -97,14 +148,22 @@ async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSe
 
     await moderation.ensure_group(session, chat_id)
 
-    # Filters and anti-abuse should not touch commands.
-    if not text or (message.text and message.text.startswith("/")):
-        return
-
     if message.from_user.is_bot:
         return
 
     if await is_admin(bot, chat_id, user_id):
+        return
+
+    missing = await _missing_gates(bot, session, chat_id, user_id)
+    if missing:
+        if await bot_can_delete(bot, chat_id):
+            with contextlib.suppress(Exception):
+                await message.delete()
+        await _send_gate_prompt(chat_id, bot, missing)
+        return
+
+    # Filters and anti-abuse should not touch commands.
+    if not text or (message.text and message.text.startswith("/")):
         return
 
     meta = await moderation.get_group_meta(session, chat_id)
@@ -126,27 +185,6 @@ async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSe
         if item.keyword in lowered:
             await _send_filter_response(message, item)
             break
-
-    gates = [gate for gate in await moderation.list_participation_gates(session, chat_id) if gate.enabled]
-    if gates:
-        missing: list[tuple[str, str]] = []
-        for gate in gates:
-            try:
-                in_gate = await is_member_of_chat(bot, gate.gate_group_id, user_id)
-            except Exception:
-                in_gate = False
-            if not in_gate:
-                missing.append((gate.gate_title, gate.join_url))
-
-        if missing and await bot_can_delete(bot, chat_id):
-            await message.delete()
-            buttons = [[types.InlineKeyboardButton(text=title[:32], url=url)] for title, url in missing]
-            await bot.send_message(
-                chat_id,
-                "يرجى الانضمام إلى المجموعات المطلوبة قبل إرسال الرسائل هنا.",
-                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=buttons),
-            )
-            return
 
     routes = await moderation.list_link_routes(session, chat_id)
     for route in routes:
