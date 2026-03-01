@@ -34,12 +34,40 @@
 ### 🐳 Running in Docker _(recommended method)_
 
 -   configure environment variables in `.env` file
+-   if you want to run the MTProto user client module too, copy `.env.user.example` to `.env.user` and fill required values (`API_ID`, `API_HASH`)
 
 -   start services
 
     ```bash
     docker compose up -d --build
     ```
+
+### 👤 User Client Module (production container)
+
+This repository includes `user_client_app` as separate production-ready services:
+
+-   `user-client-db-init`: one-shot init that creates user-client DB in the existing PostgreSQL container
+-   `user-client`: MTProto user client worker
+-   `user-client-auth`: web login/session helper
+
+Basic setup:
+
+```bash
+cp .env.user.example .env.user
+# edit .env.user and set API_ID/API_HASH
+docker compose up -d --build user-client user-client-auth
+```
+
+Auth web endpoint:
+
+-   local compose: `http://<host>:${USER_CLIENT_AUTH_PORT}` (default `8000`)
+-   prod compose: exposed internally on `${USER_CLIENT_AUTH_PORT}` (put behind reverse proxy)
+
+Runtime data persistence:
+
+-   session files are stored in Docker volume `user-client-data`
+-   user client data is isolated by using a separate PostgreSQL database name (`USER_CLIENT_DB_NAME`) on the same postgres container
+-   user client cache namespace is isolated by using a separate Redis DB index (`USER_CLIENT_REDIS_DB`) on the same redis container
 
 ### 💻 Running on Local Machine
 

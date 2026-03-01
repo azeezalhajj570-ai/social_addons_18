@@ -1,0 +1,15 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /usr/src/app
+
+COPY requirements-user-client.txt /tmp/requirements-user-client.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-user-client.txt gunicorn
+
+COPY user_client_app /usr/src/app/user_client_app
+
+RUN mkdir -p /usr/src/app/user_client_data
+
+CMD ["python", "-m", "user_client_app.main"]

@@ -1,4 +1,79 @@
 services:
+  user-client-db-init:
+    image: postgres:14-alpine
+    container_name: ${COMPOSE_PROJECT_NAME}-user-client-db-init
+    restart: "on-failure"
+    env_file:
+      - .env
+      - .env.user
+    environment:
+      - PGPASSWORD=${DB_PASS}
+      - USER_CLIENT_DB_NAME=${USER_CLIENT_DB_NAME:-user_client}
+    command: >
+      sh -c "
+      until pg_isready -h postgres -p 5432 -U $$DB_USER; do sleep 1; done;
+      psql -h postgres -U $$DB_USER -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname='$$USER_CLIENT_DB_NAME'\" | grep -q 1
+      || psql -h postgres -U $$DB_USER -d postgres -c \"CREATE DATABASE \\\"$$USER_CLIENT_DB_NAME\\\"\""
+    depends_on:
+      - postgres
+    networks:
+      - app
+
+  user-client:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.user-client
+    image: user-client:latest
+    container_name: ${COMPOSE_PROJECT_NAME}-user-client
+    restart: always
+    env_file:
+      - .env
+      - .env.user
+    environment:
+      - USER_CLIENT_DB_PATH=/usr/src/app/user_client_data/user_client.db
+      - SESSION_NAME=/usr/src/app/user_client_data/user_client
+      - USER_CLIENT_DB_URL=postgresql://${DB_USER}:${DB_PASS}@postgres:5432/${USER_CLIENT_DB_NAME:-user_client}
+      - USER_CLIENT_REDIS_URL=redis://:${REDIS_PASS}@redis:${REDIS_PORT:-6379}/${USER_CLIENT_REDIS_DB:-2}
+    networks:
+      - app
+    volumes:
+      - user-client-data:/usr/src/app/user_client_data
+    depends_on:
+      - user-client-db-init
+      - postgres
+      - redis
+
+  user-client-auth:
+    image: user-client:latest
+    container_name: ${COMPOSE_PROJECT_NAME}-user-client-auth
+    restart: always
+    env_file:
+      - .env
+      - .env.user
+    environment:
+      - USER_CLIENT_DB_PATH=/usr/src/app/user_client_data/user_client.db
+      - SESSION_NAME=/usr/src/app/user_client_data/user_client
+      - USER_CLIENT_DB_URL=postgresql://${DB_USER}:${DB_PASS}@postgres:5432/${USER_CLIENT_DB_NAME:-user_client}
+      - USER_CLIENT_REDIS_URL=redis://:${REDIS_PASS}@redis:${REDIS_PORT:-6379}/${USER_CLIENT_REDIS_DB:-2}
+      - USER_CLIENT_AUTH_PORT=${USER_CLIENT_AUTH_PORT:-8000}
+    command: >
+      gunicorn
+      --bind 0.0.0.0:${USER_CLIENT_AUTH_PORT:-8000}
+      --workers 1
+      --threads 2
+      --timeout 120
+      user_client_app.auth_web:app
+    ports:
+      - ${USER_CLIENT_AUTH_PORT:-8000}:${USER_CLIENT_AUTH_PORT:-8000}
+    networks:
+      - app
+    volumes:
+      - user-client-data:/usr/src/app/user_client_data
+    depends_on:
+      - user-client-db-init
+      - postgres
+      - redis
+
   bot:
     build:
       context: .
@@ -197,6 +272,7 @@ networks:
     driver: bridge
 
 volumes:
+  user-client-data: {}
   backups-data: {}
   postgres-data: {}
   redis-data: {}

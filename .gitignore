@@ -103,6 +103,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.user
 .venv
 env/
 venv/
@@ -130,3 +131,7 @@ dmypy.json
 
 # Pycharm
 .idea/
+
+# User client runtime data
+user_client_data/
+*.session
