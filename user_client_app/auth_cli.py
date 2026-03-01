@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 from pyrogram import Client
 from pyrogram.errors import PhoneCodeExpired, PhoneCodeInvalid, SessionPasswordNeeded
@@ -12,6 +14,25 @@ def _require_phone(phone_number: str) -> str:
     if not value:
         raise SystemExit("Missing PHONE_NUMBER in .env.user for CLI login")
     return value
+
+
+def _is_auth_key_unregistered(exc: Exception) -> bool:
+    return "AUTH_KEY_UNREGISTERED" in str(exc).upper()
+
+
+def _clear_local_session(session_name: str) -> None:
+    base = Path(f"{session_name}.session")
+    for path in (
+        base,
+        Path(f"{session_name}.session-journal"),
+        Path(f"{session_name}.session-shm"),
+        Path(f"{session_name}.session-wal"),
+    ):
+        try:
+            if path.exists():
+                path.unlink()
+        except Exception:
+            pass
 
 
 def main() -> None:
@@ -28,7 +49,26 @@ def main() -> None:
 
     client.connect()
     try:
-        if client.get_me() is None:
+        needs_login = False
+        try:
+            me = client.get_me()
+            needs_login = me is None
+        except Exception as exc:
+            if not _is_auth_key_unregistered(exc):
+                raise
+
+            if cfg.session_string:
+                raise SystemExit(
+                    "SESSION_STRING is invalid/unregistered. Remove SESSION_STRING from .env.user and run login again."
+                ) from exc
+
+            print("Found invalid local session, resetting and starting fresh login...")
+            client.disconnect()
+            _clear_local_session(cfg.session_name)
+            client.connect()
+            needs_login = True
+
+        if needs_login:
             sent = client.send_code(phone)
             code = input("Enter Telegram login code: ").strip()
             try:
