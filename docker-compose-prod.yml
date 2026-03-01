@@ -44,6 +44,9 @@ services:
       - redis
 
   user-client-auth:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.user-client
     image: user-client:latest
     container_name: ${COMPOSE_PROJECT_NAME}-user-client-auth
     restart: always
