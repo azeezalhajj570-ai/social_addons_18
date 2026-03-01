@@ -105,7 +105,8 @@ class UserClientApp:
             self.log.error("auto-dm failed target=%s source_chat=%s error=%s", sender_id, message.chat.id, exc)
 
     async def _handle_private_command(self, message) -> None:
-        if not message.chat or not message.chat.is_self:
+        # In some Pyrogram builds Chat has no `is_self`; use sender self-flag instead.
+        if not message.chat or not message.from_user or not getattr(message.from_user, "is_self", False):
             return
         text = (message.text or "").strip()
         if not text.startswith("."):
