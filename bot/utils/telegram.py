@@ -30,9 +30,9 @@ async def bot_can_ban(bot: Bot, chat_id: int) -> bool:
 
 async def is_member_of_chat(bot: Bot, chat_id: int, user_id: int) -> bool:
     member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-    return member.status in {
-        ChatMemberStatus.MEMBER,
-        ChatMemberStatus.RESTRICTED,
-        ChatMemberStatus.ADMINISTRATOR,
-        ChatMemberStatus.CREATOR,
-    }
+    if member.status in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR, ChatMemberStatus.MEMBER}:
+        return True
+    if member.status == ChatMemberStatus.RESTRICTED:
+        # Telegram may return RESTRICTED with is_member=False for non-members.
+        return bool(getattr(member, "is_member", False))
+    return False

@@ -303,8 +303,12 @@ async def gate_health(message: types.Message, bot: Bot, session: AsyncSession) -
     ]
     for gate in gates:
         try:
+            member = await bot.get_chat_member(gate.gate_group_id, inspect_user_id)
             joined = await is_member_of_chat(bot, gate.gate_group_id, inspect_user_id)
             status = "joined" if joined else "missing"
+            raw_status = getattr(member, "status", "unknown")
+            raw_is_member = getattr(member, "is_member", None)
+            status = f"{status} (raw_status={raw_status}, is_member={raw_is_member})"
         except Exception as exc:
             status = f"check_error: {type(exc).__name__}"
         lines.append(f"  - `{gate.gate_group_id}` {gate.gate_title} => {status}")
