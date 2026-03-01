@@ -6,11 +6,13 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from pyrogram import Client, filters, idle
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from user_client_app.config import Config
 from user_client_app.features.link_collector import collect_group_links
 from user_client_app.features.odoo_sync import OdooAutoReplySyncRunner
 from user_client_app.features.scheduler import ScheduledOutboxRunner, parse_datetime_utc
+from user_client_app.integrations.odoo_api_client import OdooApiClient
 from user_client_app.storage import Repository
 
 
@@ -35,16 +37,83 @@ class UserClientApp:
             poll_seconds=self.cfg.scheduler_poll_seconds,
         )
         self._odoo_sync = OdooAutoReplySyncRunner(cfg=self.cfg, repo=self.repo, log=self.log) if self.cfg.odoo_enabled else None
+        self._setup_state: dict[str, str | int] | None = None
+        self._self_user_id: int | None = None
         self._bind_handlers()
+
+    async def _send_route_dm_after_delay(self, user_id: int, text: str, delay_seconds: int, chat_id: int, keyword: str, msg_id: int) -> None:
+        try:
+            if delay_seconds > 0:
+                await asyncio.sleep(delay_seconds)
+            await self.client.send_message(user_id, text)
+            self.log.info(
+                "dynamic route dm sent user=%s delay=%ss chat=%s keyword=%r msg=%s",
+                user_id,
+                delay_seconds,
+                chat_id,
+                keyword,
+                msg_id,
+            )
+        except Exception as exc:
+            self.log.error(
+                "dynamic route dm failed user=%s delay=%ss chat=%s keyword=%r msg=%s err=%s",
+                user_id,
+                delay_seconds,
+                chat_id,
+                keyword,
+                msg_id,
+                exc,
+            )
+
+    @staticmethod
+    def _format_when(send_at_utc: datetime) -> str:
+        local_dt = send_at_utc.astimezone()
+        return (
+            f"UTC: {send_at_utc.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"Local: {local_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+        )
+
+    async def _respond(self, message, text: str, reply_markup=None) -> None:
+        try:
+            await message.reply_text(text, reply_markup=reply_markup)
+            return
+        except Exception as exc:
+            self.log.warning("reply_text failed, fallback to send_message. err=%s", exc)
+        await self.client.send_message("me", text, reply_markup=reply_markup)
 
     def _bind_handlers(self) -> None:
         @self.client.on_message(filters.group & filters.incoming)
         async def _on_group_message(client: Client, message) -> None:
             await self._handle_group_message(client, message)
 
-        @self.client.on_message(filters.me & filters.private & filters.text)
+        @self.client.on_message(filters.private & filters.text)
         async def _on_private_self_text(client: Client, message) -> None:
             await self._handle_private_command(message)
+
+        @self.client.on_callback_query(filters.regex(r"^menu:"))
+        async def _on_menu_callback(client: Client, callback_query) -> None:
+            await self._handle_menu_callback(callback_query)
+
+    def _menu_keyboard(self) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("Help", callback_data="menu:help"),
+                    InlineKeyboardButton("My Groups", callback_data="menu:mygroups"),
+                ],
+                [
+                    InlineKeyboardButton("Setup Wizard", callback_data="menu:setup"),
+                    InlineKeyboardButton("Schedules", callback_data="menu:schedules"),
+                ],
+                [
+                    InlineKeyboardButton("Collect Links", callback_data="menu:collect_links"),
+                    InlineKeyboardButton("Odoo Ping", callback_data="menu:odoo_ping"),
+                ],
+                [
+                    InlineKeyboardButton("Close", callback_data="menu:close"),
+                ],
+            ]
+        )
 
     async def _handle_group_message(self, client: Client, message) -> None:
         now = time.time()
@@ -67,9 +136,29 @@ class UserClientApp:
                     continue
                 if keyword in text_lower:
                     try:
-                        await message.reply_text(route["response"])
+                        if not sender_id:
+                            self.log.info(
+                                "dynamic route skipped missing-sender chat=%s keyword=%r msg=%s",
+                                message.chat.id,
+                                keyword,
+                                message.id,
+                            )
+                            return
+                        delay = self.cfg.route_dm_delay_seconds
+                        asyncio.create_task(
+                            self._send_route_dm_after_delay(
+                                user_id=sender_id,
+                                text=route["response"],
+                                delay_seconds=delay,
+                                chat_id=message.chat.id,
+                                keyword=keyword,
+                                msg_id=message.id,
+                            )
+                        )
                         self.log.info(
-                            "dynamic route hit chat=%s keyword=%r msg=%s",
+                            "dynamic route queued dm user=%s delay=%ss chat=%s keyword=%r msg=%s",
+                            sender_id,
+                            delay,
                             message.chat.id,
                             keyword,
                             message.id,
@@ -105,10 +194,20 @@ class UserClientApp:
             self.log.error("auto-dm failed target=%s source_chat=%s error=%s", sender_id, message.chat.id, exc)
 
     async def _handle_private_command(self, message) -> None:
-        # In some Pyrogram builds Chat has no `is_self`; use sender self-flag instead.
-        if not message.chat or not message.from_user or not getattr(message.from_user, "is_self", False):
+        if not message.chat:
+            return
+        chat_id = getattr(message.chat, "id", None)
+        from_user_id = getattr(getattr(message, "from_user", None), "id", None)
+        is_outgoing = bool(getattr(message, "outgoing", False))
+        is_saved_messages = self._self_user_id is not None and chat_id == self._self_user_id
+        if not (is_outgoing or is_saved_messages or (self._self_user_id is not None and from_user_id == self._self_user_id)):
             return
         text = (message.text or "").strip()
+        self.log.info("private command candidate chat=%s from=%s outgoing=%s text=%r", chat_id, from_user_id, is_outgoing, text[:120])
+        if self._setup_state and not text.startswith("."):
+            consumed = await self._handle_setup_wizard(message)
+            if consumed:
+                return
         if not text.startswith("."):
             return
 
@@ -117,21 +216,27 @@ class UserClientApp:
         payload = payload.strip()
 
         if cmd == ".help":
-            await message.reply_text(
+            await self._respond(
+                message,
                 "\n".join(
                     [
                         "User Client Commands:",
                         ".help",
+                        ".menu",
                         ".addroute <chat_id> | <keyword> | <response>",
                         ".delroute <chat_id> | <keyword>",
                         ".listroutes <chat_id>",
+                        ".mygroups",
+                        ".setup",
+                        ".setup_cancel",
+                        ".odoo_ping",
                         ".schedule <chat> | <YYYY-MM-DD HH:MM> | <text>",
                         ".schedule_in <chat> | <minutes> | <text>",
                         ".schedules",
                         ".cancel_schedule <id>",
                         ".collect_links",
                     ]
-                )
+                ),
             )
             return
 
@@ -139,22 +244,67 @@ class UserClientApp:
             await self._cmd_schedule(message, payload)
             return
 
+        if cmd == ".menu":
+            self.log.info("menu command received chat=%s", chat_id)
+            await self._respond(
+                message,
+                "\n".join(
+                    [
+                        "User client menu",
+                        "",
+                        "Quick Start",
+                        "1) .mygroups",
+                        "2) .setup",
+                        "3) Send chat_id, then 'keyword: response' lines",
+                        "",
+                        "Auto Reply",
+                        "- .addroute <chat_id> | <keyword> | <response>",
+                        "- .delroute <chat_id> | <keyword>",
+                        "- .listroutes <chat_id>",
+                        "",
+                        "Scheduler",
+                        "- .schedule <chat> | <YYYY-MM-DD HH:MM> | <text>",
+                        "- .schedule_in <chat> | <minutes> | <text>",
+                        "- .schedules",
+                        "- .cancel_schedule <id>",
+                        "",
+                        "Tools",
+                        "- .collect_links",
+                        "- .odoo_ping",
+                        "- .help",
+                    ]
+                ),
+                reply_markup=self._menu_keyboard(),
+            )
+            return
+
         if cmd == ".addroute":
-            if self.cfg.odoo_enabled:
-                await message.reply_text("Routes are managed by Odoo (source of truth). Local addroute is disabled.")
-                return
             await self._cmd_addroute(message, payload)
             return
 
         if cmd == ".delroute":
-            if self.cfg.odoo_enabled:
-                await message.reply_text("Routes are managed by Odoo (source of truth). Local delroute is disabled.")
-                return
             await self._cmd_delroute(message, payload)
             return
 
         if cmd == ".listroutes":
             await self._cmd_listroutes(message, payload)
+            return
+
+        if cmd == ".mygroups":
+            await self._cmd_mygroups(message)
+            return
+
+        if cmd == ".setup":
+            await self._cmd_setup(message)
+            return
+
+        if cmd == ".setup_cancel":
+            self._setup_state = None
+            await self._respond(message, "Setup cancelled.")
+            return
+
+        if cmd == ".odoo_ping":
+            await self._cmd_odoo_ping(message)
             return
 
         if cmd == ".schedule_in":
@@ -173,52 +323,175 @@ class UserClientApp:
             await self._cmd_collect_links(message)
             return
 
-        await message.reply_text("Unknown command. Use .help")
+        await self._respond(message, "Unknown command. Use .help")
+
+    async def _handle_menu_callback(self, callback_query) -> None:
+        data = callback_query.data or ""
+        await callback_query.answer()
+        msg = callback_query.message
+        if not msg:
+            return
+
+        if data == "menu:help":
+            await msg.reply_text("Use `.help` for full command list.")
+            return
+        if data == "menu:mygroups":
+            await self._cmd_mygroups(msg)
+            return
+        if data == "menu:setup":
+            await self._cmd_setup(msg)
+            return
+        if data == "menu:schedules":
+            await self._cmd_schedules(msg)
+            return
+        if data == "menu:collect_links":
+            await self._cmd_collect_links(msg)
+            return
+        if data == "menu:odoo_ping":
+            await self._cmd_odoo_ping(msg)
+            return
+        if data == "menu:close":
+            try:
+                await msg.edit_text("Menu closed.")
+            except Exception:
+                pass
+
+    async def _cmd_mygroups(self, message) -> None:
+        groups: list[str] = []
+        async for dialog in self.client.get_dialogs():
+            chat = dialog.chat
+            if not chat:
+                continue
+            if str(chat.type).lower() not in {"chattype.group", "chattype.supergroup"}:
+                continue
+            title = chat.title or str(chat.id)
+            groups.append(f"- {title} | {chat.id}")
+        if not groups:
+            await self._respond(message, "No groups found in this account.")
+            return
+        await self._respond(message, "Your groups:\n" + "\n".join(groups[:100]))
+
+    async def _cmd_setup(self, message) -> None:
+        self._setup_state = {"step": "chat_id"}
+        await self._respond(
+            message,
+            "Setup wizard started.\n"
+            "Step 1/2: send target `chat_id`.\n"
+            "Then step 2/2: send routes lines in format:\n"
+            "`keyword: response`\n"
+            "Use `.setup_cancel` to stop."
+        )
+
+    async def _handle_setup_wizard(self, message) -> bool:
+        if not self._setup_state:
+            return False
+        text = (message.text or "").strip()
+        if not text:
+            return True
+        step = self._setup_state.get("step")
+        if step == "chat_id":
+            try:
+                chat_id = int(text)
+            except ValueError:
+                await self._respond(message, "Invalid chat_id. Send an integer like -1001234567890.")
+                return True
+            self._setup_state = {"step": "routes", "chat_id": chat_id}
+            await self._respond(
+                message,
+                "Step 2/2: send one or multiple lines:\n"
+                "`keyword: response`\n"
+                "Example:\n"
+                "hello: Hi there\n"
+                "price: Contact admin"
+            )
+            return True
+
+        if step == "routes":
+            chat_id = int(self._setup_state["chat_id"])
+            saved = 0
+            invalid: list[str] = []
+            for line in text.splitlines():
+                raw = line.strip()
+                if not raw:
+                    continue
+                if ":" not in raw:
+                    invalid.append(raw)
+                    continue
+                keyword, response = raw.split(":", 1)
+                keyword = keyword.strip()
+                response = response.strip()
+                if not keyword or not response:
+                    invalid.append(raw)
+                    continue
+                self.repo.upsert_auto_reply_route(chat_id=chat_id, keyword=keyword, response=response)
+                saved += 1
+
+            if saved == 0:
+                await self._respond(message, "No valid routes found. Use `keyword: response` format.")
+                return True
+            self._setup_state = None
+            tail = f"\nInvalid lines: {len(invalid)}" if invalid else ""
+            if self.cfg.odoo_enabled:
+                tail += "\nWarning: Odoo sync is enabled and may overwrite local routes."
+            await self._respond(message, f"Setup complete. Saved {saved} routes for {chat_id}.{tail}")
+            return True
+        return False
 
     async def _cmd_addroute(self, message, payload: str) -> None:
+        normalized = payload.replace(" ", "")
+        if normalized in {"||", "| |".replace(" ", "")}:
+            await self._cmd_setup(message)
+            return
+
         parts = [p.strip() for p in payload.split("|", 2)]
         if len(parts) != 3 or not all(parts):
-            await message.reply_text("Format: .addroute <chat_id> | <keyword> | <response>")
+            await self._respond(
+                message,
+                "Format: `.addroute chat_id | keyword | response`\n"
+                "Shortcut: `.addroute | |` (starts setup wizard)"
+            )
             return
         raw_chat_id, keyword, response = parts
         try:
             chat_id = int(raw_chat_id)
         except ValueError:
-            await message.reply_text("chat_id must be an integer.")
+            await self._respond(message, "chat_id must be an integer.")
             return
         self.repo.upsert_auto_reply_route(chat_id=chat_id, keyword=keyword, response=response)
-        await message.reply_text(f"Route saved for {chat_id}: `{keyword}` -> {response}")
+        tail = "\nWarning: Odoo sync may overwrite this route." if self.cfg.odoo_enabled else ""
+        await self._respond(message, f"Route saved for {chat_id}: `{keyword}` -> {response}{tail}")
 
     async def _cmd_delroute(self, message, payload: str) -> None:
         parts = [p.strip() for p in payload.split("|", 1)]
         if len(parts) != 2 or not all(parts):
-            await message.reply_text("Format: .delroute <chat_id> | <keyword>")
+            await self._respond(message, "Format: .delroute chat_id | keyword")
             return
         raw_chat_id, keyword = parts
         try:
             chat_id = int(raw_chat_id)
         except ValueError:
-            await message.reply_text("chat_id must be an integer.")
+            await self._respond(message, "chat_id must be an integer.")
             return
         deleted = self.repo.delete_auto_reply_route(chat_id=chat_id, keyword=keyword)
         if deleted:
-            await message.reply_text(f"Route deleted for {chat_id}: `{keyword}`")
+            tail = "\nWarning: Odoo sync may recreate routes from Odoo source." if self.cfg.odoo_enabled else ""
+            await self._respond(message, f"Route deleted for {chat_id}: `{keyword}`{tail}")
         else:
-            await message.reply_text("Route not found.")
+            await self._respond(message, "Route not found.")
 
     async def _cmd_listroutes(self, message, payload: str) -> None:
         raw_chat_id = payload.strip()
         if not raw_chat_id:
-            await message.reply_text("Format: .listroutes <chat_id>")
+            await self._respond(message, "Format: .listroutes chat_id")
             return
         try:
             chat_id = int(raw_chat_id)
         except ValueError:
-            await message.reply_text("chat_id must be an integer.")
+            await self._respond(message, "chat_id must be an integer.")
             return
         rows = self.repo.list_auto_reply_routes(chat_id=chat_id)
         if not rows:
-            await message.reply_text("No routes configured for this chat.")
+            await self._respond(message, "No routes configured for this chat.")
             return
         lines = []
         for row in rows[:30]:
@@ -227,7 +500,49 @@ class UserClientApp:
             lines.append(f"- [{source}] {row['keyword']} -> {preview}")
         if len(rows) > 30:
             lines.append(f"...and {len(rows) - 30} more")
-        await message.reply_text("Routes:\n" + "\n".join(lines))
+        await self._respond(message, "Routes:\n" + "\n".join(lines))
+
+    async def _cmd_odoo_ping(self, message) -> None:
+        if not self.cfg.odoo_enabled:
+            await self._respond(message, "Odoo mode is disabled. Set ODOO_ENABLED=1 in .env.user.")
+            return
+        if not (self.cfg.odoo_url and self.cfg.odoo_db and self.cfg.odoo_username and self.cfg.odoo_password):
+            await self._respond(message, "Missing Odoo config. Check ODOO_URL/ODOO_DB/ODOO_USERNAME/ODOO_PASSWORD.")
+            return
+
+        try:
+            client = OdooApiClient(
+                url=self.cfg.odoo_url,
+                db=self.cfg.odoo_db,
+                username=self.cfg.odoo_username,
+                password=self.cfg.odoo_password,
+            )
+            uid = client.authenticate()
+            session_exists = client.fetch_account_session_string(
+                account_model=self.cfg.odoo_account_model,
+                account_ref=self.cfg.odoo_account_ref,
+                phone_number=self.cfg.odoo_phone_number,
+            )
+            routes = client.fetch_auto_reply_routes(
+                model=self.cfg.odoo_auto_reply_model,
+                account_ref=self.cfg.odoo_account_ref,
+                phone_number=self.cfg.odoo_phone_number,
+            )
+            await self._respond(
+                message,
+                "\n".join(
+                    [
+                        "Odoo ping: OK",
+                        f"uid: {uid}",
+                        f"account_ref: {self.cfg.odoo_account_ref}",
+                        f"phone: {self.cfg.odoo_phone_number}",
+                        f"session_string_found: {'yes' if session_exists else 'no'}",
+                        f"routes_found: {len(routes)}",
+                    ]
+                )
+            )
+        except Exception as exc:
+            await self._respond(message, f"Odoo ping failed: {type(exc).__name__}: {exc}")
 
     async def _cmd_schedule(self, message, payload: str) -> None:
         parts = [p.strip() for p in payload.split("|", 2)]
@@ -248,7 +563,7 @@ class UserClientApp:
 
         job_id = self.repo.add_scheduled_message(target=target, text=text, send_at_utc=send_at_utc)
         await message.reply_text(
-            f"Scheduled job #{job_id}\nTarget: {target}\nUTC: {send_at_utc.strftime('%Y-%m-%d %H:%M:%S')}"
+            f"Scheduled job #{job_id}\nTarget: {target}\nMessage: {text}\n{self._format_when(send_at_utc)}"
         )
 
     async def _cmd_schedule_in(self, message, payload: str) -> None:
@@ -270,7 +585,7 @@ class UserClientApp:
         send_at_utc = datetime.now(tz=timezone.utc) + timedelta(minutes=minutes)
         job_id = self.repo.add_scheduled_message(target=target, text=text, send_at_utc=send_at_utc)
         await message.reply_text(
-            f"Scheduled job #{job_id}\nTarget: {target}\nUTC: {send_at_utc.strftime('%Y-%m-%d %H:%M:%S')}"
+            f"Scheduled job #{job_id}\nTarget: {target}\nMessage: {text}\n{self._format_when(send_at_utc)}"
         )
 
     async def _cmd_schedules(self, message) -> None:
@@ -314,6 +629,7 @@ class UserClientApp:
         await self.client.start()
         try:
             me = await self.client.get_me()
+            self._self_user_id = me.id
             self.log.info("Logged in as: %s (@%s) id=%s", me.first_name, me.username, me.id)
 
             try:

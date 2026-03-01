@@ -28,6 +28,7 @@ class Config:
     auto_reply_user_id: int
     auto_reply_text: str
     auto_reply_cooldown_seconds: int
+    route_dm_delay_seconds: int
     scheduler_poll_seconds: int
     odoo_enabled: bool
     odoo_url: str
@@ -53,6 +54,7 @@ def load_config() -> Config:
         auto_reply_user_id=int(os.getenv("AUTO_REPLY_USER_ID", "0")),
         auto_reply_text=os.getenv("AUTO_REPLY_TEXT", "Hello"),
         auto_reply_cooldown_seconds=int(os.getenv("AUTO_REPLY_COOLDOWN_SECONDS", "8")),
+        route_dm_delay_seconds=max(0, int(os.getenv("ROUTE_DM_DELAY_SECONDS", "30"))),
         scheduler_poll_seconds=max(1, int(os.getenv("SCHEDULER_POLL_SECONDS", "2"))),
         odoo_enabled=as_bool(os.getenv("ODOO_ENABLED", "0")),
         odoo_url=os.getenv("ODOO_URL", "").strip(),
