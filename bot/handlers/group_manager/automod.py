@@ -57,10 +57,20 @@ async def _missing_gates(
 ) -> list[tuple[str, str]]:
     missing: list[tuple[str, str]] = []
     gates = [gate for gate in await moderation.list_participation_gates(session, chat_id) if gate.enabled]
+    if not gates:
+        return missing
+
     for gate in gates:
         try:
             in_gate = await is_member_of_chat(bot, gate.gate_group_id, user_id)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "gate membership check failed chat={} gate={} user={} err={}",
+                chat_id,
+                gate.gate_group_id,
+                user_id,
+                exc,
+            )
             in_gate = False
         if not in_gate:
             missing.append((gate.gate_title, gate.join_url))
@@ -156,6 +166,12 @@ async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSe
 
     missing = await _missing_gates(bot, session, chat_id, user_id)
     if missing:
+        logger.info(
+            "gate enforcement triggered chat={} user={} missing_gates={}",
+            chat_id,
+            user_id,
+            [title for title, _ in missing],
+        )
         if await bot_can_delete(bot, chat_id):
             with contextlib.suppress(Exception):
                 await message.delete()

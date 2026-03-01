@@ -317,6 +317,29 @@ async def list_participation_gates(session: AsyncSession, chat_id: int) -> list[
     ]
 
 
+async def list_enabled_participation_gates_global(session: AsyncSession) -> list[ParticipationGate]:
+    result = await session.execute(
+        select(ParticipationGateModel)
+        .where(ParticipationGateModel.enabled.is_(True))
+        .order_by(ParticipationGateModel.gate_title.asc()),
+    )
+    rows = result.scalars().all()
+
+    # A gate can be configured in multiple managed groups; keep only one prompt entry per gate group.
+    unique: dict[int, ParticipationGate] = {}
+    for row in rows:
+        if row.gate_group_id in unique:
+            continue
+        unique[row.gate_group_id] = ParticipationGate(
+            chat_id=row.chat_id,
+            gate_group_id=row.gate_group_id,
+            gate_title=row.gate_title,
+            join_url=row.join_url,
+            enabled=row.enabled,
+        )
+    return list(unique.values())
+
+
 async def delete_participation_gate(session: AsyncSession, chat_id: int, gate_group_id: int) -> bool:
     result = await session.execute(
         delete(ParticipationGateModel).where(
