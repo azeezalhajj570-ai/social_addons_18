@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import html
 import re
 import time
 from collections import defaultdict, deque
@@ -155,6 +156,7 @@ async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSe
 
     chat_id = message.chat.id
     user_id = message.from_user.id
+    user_name = html.escape(message.from_user.full_name)
     text = (message.text or message.caption or "").strip()
 
     await moderation.ensure_group(session, chat_id)
@@ -247,9 +249,28 @@ async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSe
         if not matched:
             continue
         if await bot_can_delete(bot, chat_id):
-            await message.delete()
+            with contextlib.suppress(Exception):
+                await message.delete()
         if await bot_can_ban(bot, chat_id):
-            await bot.ban_chat_member(chat_id, user_id)
+            temp_ban = await moderation.get_setting(session, chat_id, "temp_ban_before_remove")
+            seconds = (
+                await moderation.get_int_setting(session, chat_id, "temp_ban_seconds", 600)
+                if temp_ban
+                else settings.MUTE_SECONDS
+            )
+            mute_seconds = max(60, seconds)
+            until = int(time.time()) + mute_seconds
+            await bot.restrict_chat_member(
+                chat_id,
+                user_id,
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=until,
+            )
+            await bot.send_message(
+                chat_id,
+                f"{user_name} تم حذف الرسالة وكتمه لمدة {mute_seconds} ثانية.",
+                parse_mode=ParseMode.HTML,
+            )
         return
 
     anti_links = await moderation.get_setting(session, chat_id, "anti_links")
@@ -271,7 +292,7 @@ async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSe
             except Exception:
                 warn_in_group = True
         if warn_in_group:
-            await bot.send_message(chat_id, f"{message.from_user.mention_html()} {warn_text}", parse_mode=ParseMode.HTML)
+            await bot.send_message(chat_id, f"{user_name} {warn_text}", parse_mode=ParseMode.HTML)
         return
 
     if not await bot_can_ban(bot, chat_id):
@@ -282,4 +303,4 @@ async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSe
     seconds = await moderation.get_int_setting(session, chat_id, "temp_ban_seconds", 600) if temp_ban else settings.MUTE_SECONDS
     until = int(time.time()) + max(60, seconds)
     await bot.restrict_chat_member(chat_id, user_id, permissions=ChatPermissions(can_send_messages=False), until_date=until)
-    await bot.send_message(chat_id, f"{message.from_user.mention_html()} تم كتمه لمدة {max(60, seconds)} ثانية.", parse_mode=ParseMode.HTML)
+    await bot.send_message(chat_id, f"{user_name} تم كتمه لمدة {max(60, seconds)} ثانية.", parse_mode=ParseMode.HTML)
