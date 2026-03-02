@@ -12,6 +12,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.core.config import settings
+from bot.services import ai_moderation
 from bot.services import moderation
 from bot.utils.telegram import bot_can_ban, bot_can_delete, is_admin, is_member_of_chat
 
@@ -199,6 +200,25 @@ async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSe
     lowered = text.lower()
     for item in saved_filters:
         if item.keyword in lowered:
+            decision = await ai_moderation.evaluate_filter_hit(
+                message_text=text,
+                matched_keyword=item.keyword,
+                chat_id=chat_id,
+                user_id=user_id,
+            )
+            if decision.should_delete and await bot_can_delete(bot, chat_id):
+                with contextlib.suppress(Exception):
+                    await message.delete()
+                logger.info(
+                    "ai moderation deleted message chat={} user={} keyword={} confidence={} category={} reason={}",
+                    chat_id,
+                    user_id,
+                    item.keyword,
+                    decision.confidence,
+                    decision.category,
+                    decision.reason,
+                )
+                return
             await _send_filter_response(message, item)
             break
 

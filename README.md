@@ -146,6 +146,14 @@ This template now includes a production-ready group moderation module ported fro
 -   `/delgate <gate_group_id>`
 -   `/listgates`
 
+### AI Moderation Assistance (optional)
+
+When a saved filter keyword is matched, you can enable an AI second-check to decide if the message is promotional and should be deleted.
+
+-   disabled by default, so existing behavior stays unchanged
+-   if enabled and AI says `delete=true` with enough confidence, the bot deletes the message
+-   if AI is disabled/fails/times out, the bot falls back to normal filter behavior
+
 Private-chat mode is supported for management commands by passing target group first, e.g. `/addrule @mygroup spam|promo`.
 
 ## 🌍 Environment variables
@@ -161,6 +169,13 @@ to launch the bot you only need a token bot, database and redis settings, everyt
 | `MAX_WARNS`              | Warning threshold before automatic mute for anti-links                                       |
 | `MUTE_SECONDS`           | Default mute duration in seconds when user reaches warning threshold                         |
 | `LINK_RE`                | Regex used by anti-links detector                                                            |
+| `AI_MODERATION_ENABLED`  | Enables optional AI moderation on matched filter messages (`True`/`False`)                   |
+| `AI_MODERATION_PROVIDER` | AI provider for moderation (`gemini` or `openai`)                                            |
+| `AI_MODERATION_API_KEY`  | API key for the selected AI provider                                                         |
+| `AI_MODERATION_BASE_URL` | Base URL for AI provider API (Gemini default: `https://generativelanguage.googleapis.com/v1beta`) |
+| `AI_MODERATION_MODEL`    | Model name used for moderation classification                                                |
+| `AI_MODERATION_TIMEOUT_SECONDS` | Timeout for each AI moderation request                                               |
+| `AI_MODERATION_CONFIDENCE_THRESHOLD` | Minimum confidence required before deleting a message                         |
 | `DEBUG`                  | Enable or disable debugging mode (e.g., `True` or `False`)                                  |
 | `USE_WEBHOOK`            | Flag to indicate whether the bot should use a webhook for updates (e.g., `True` or `False`) |
 | `WEBHOOK_BASE_URL`       | Base URL for the webhook                                                                    |

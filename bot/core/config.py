@@ -46,6 +46,13 @@ class BotSettings(WebhookSettings):
     POLLING_LOCK_KEY: str = "telegram_bot:polling_lock"
     POLLING_LOCK_TTL_SECONDS: int = 120
     POLLING_LOCK_RENEW_EVERY_SECONDS: int = 40
+    AI_MODERATION_ENABLED: bool = False
+    AI_MODERATION_PROVIDER: str = "gemini"
+    AI_MODERATION_API_KEY: str | None = None
+    AI_MODERATION_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+    AI_MODERATION_MODEL: str = "gemini-2.0-flash"
+    AI_MODERATION_TIMEOUT_SECONDS: float = 8.0
+    AI_MODERATION_CONFIDENCE_THRESHOLD: float = 0.7
 
     @property
     def link_pattern(self) -> re.Pattern[str]:
