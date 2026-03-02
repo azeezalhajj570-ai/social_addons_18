@@ -655,13 +655,19 @@ async def purge_cmd(message: types.Message, bot: Bot, session: AsyncSession) -> 
         await message.answer("أحتاج صلاحية حذف الرسائل")
         return
     deleted = 0
-    start_id = message.reply_to_message.message_id if message.reply_to_message else message.message_id
-    for mid in range(start_id, max(0, start_id - count), -1):
+    # If command is not used as reply, purge previous messages first.
+    start_id = message.reply_to_message.message_id if message.reply_to_message else max(1, message.message_id - 1)
+    scanned = 0
+    max_scan = max(500, count * 10)
+    mid = start_id
+    while mid > 0 and deleted < count and scanned < max_scan:
         try:
             await bot.delete_message(message.chat.id, mid)
             deleted += 1
         except Exception:
-            continue
+            pass
+        mid -= 1
+        scanned += 1
     await message.answer(f"🧹 تم حذف {deleted} رسالة")
 
 
