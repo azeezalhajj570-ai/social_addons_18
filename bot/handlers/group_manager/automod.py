@@ -21,6 +21,7 @@ router = Router(name="group_manager_automod")
 
 SPAM_BUCKETS: dict[tuple[int, int], deque[float]] = defaultdict(deque)
 FLOOD_BUCKETS: dict[tuple[int, int], deque[float]] = defaultdict(deque)
+DAILY_AD_RESTRICTIONS: dict[tuple[int, str], int] = defaultdict(int)
 
 
 async def _send_filter_response(message: types.Message, item: moderation.SavedFilter) -> None:
@@ -49,6 +50,17 @@ def _hit_bucket(bucket: dict[tuple[int, int], deque[float]], key: tuple[int, int
     while q and now - q[0] > window:
         q.popleft()
     return len(q) > limit
+
+
+def _increment_daily_ad_restrictions(chat_id: int) -> int:
+    day_key = time.strftime("%Y-%m-%d", time.gmtime())
+    # Keep only today's counters to avoid unbounded growth.
+    stale_keys = [key for key in DAILY_AD_RESTRICTIONS if key[1] != day_key]
+    for key in stale_keys:
+        DAILY_AD_RESTRICTIONS.pop(key, None)
+    counter_key = (chat_id, day_key)
+    DAILY_AD_RESTRICTIONS[counter_key] += 1
+    return DAILY_AD_RESTRICTIONS[counter_key]
 
 
 async def _missing_gates(
@@ -266,9 +278,11 @@ async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSe
                 permissions=ChatPermissions(can_send_messages=False),
                 until_date=until,
             )
+            ad_total_today = _increment_daily_ad_restrictions(chat_id)
             await bot.send_message(
                 chat_id,
-                f"{user_name} تم حذف الرسالة وكتمه لمدة {mute_seconds} ثانية.",
+                f"تم تطبيق تقييد محلي على المستخدم {user_id} بسبب إعلان غير مُصرّح به.\n"
+                f"إجمالي المحظورين إعلانياً اليوم: {ad_total_today}",
                 parse_mode=ParseMode.HTML,
             )
         return
@@ -303,4 +317,8 @@ async def moderation_pipeline(message: types.Message, bot: Bot, session: AsyncSe
     seconds = await moderation.get_int_setting(session, chat_id, "temp_ban_seconds", 600) if temp_ban else settings.MUTE_SECONDS
     until = int(time.time()) + max(60, seconds)
     await bot.restrict_chat_member(chat_id, user_id, permissions=ChatPermissions(can_send_messages=False), until_date=until)
-    await bot.send_message(chat_id, f"{user_name} تم كتمه لمدة {max(60, seconds)} ثانية.", parse_mode=ParseMode.HTML)
+    await bot.send_message(
+        chat_id,
+        f"تم تطبيق تقييد محلي على المستخدم {user_id} لمدة {max(60, seconds)} ثانية بسبب نشر رابط غير مُصرّح به.",
+        parse_mode=ParseMode.HTML,
+    )
