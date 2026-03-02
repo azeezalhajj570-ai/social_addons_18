@@ -647,7 +647,7 @@ async def purge_cmd(message: types.Message, bot: Bot, session: AsyncSession) -> 
         await message.answer("الاستخدام: /purge count")
         return
     try:
-        count = max(1, min(200, int(args[0])))
+        count = max(1, min(5000, int(args[0])))
     except ValueError:
         await message.answer("count يجب أن يكون رقمًا صحيحًا")
         return
